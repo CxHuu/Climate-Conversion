@@ -28,25 +28,21 @@ WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
 if not TOKEN:
     raise RuntimeError("TOKEN not set.")
 
-# ================= DISCORD ================= #
+# ================= DISCORD SETUP ================= #
 
 intents = discord.Intents.default()
 intents.message_content = True
+
 client = discord.Client(intents=intents)
 
-# Improved regex:
-# Supports:
-# -21c
-# -21 C
-# -21°C
-# 30F
-# 273K
+# FINAL regex (supports -21c, -21 C, -21°C etc.)
 temp_pattern = re.compile(
     r"(?<!\w)(-?\d+(?:\.\d+)?)\s?°?\s?(C|F|K)(?!\w)",
     re.IGNORECASE
 )
 
-converted_messages = set()
+# Prevent duplicate processing
+processed_messages = set()
 
 # ================= READY ================= #
 
@@ -61,10 +57,15 @@ async def on_message(message):
     if message.author.bot:
         return
 
+    # Prevent double processing (important fix)
+    if message.id in processed_messages:
+        return
+    processed_messages.add(message.id)
+
     content = message.content.strip()
     lower = content.lower()
 
-    # WEATHER
+    # WEATHER COMMAND
     if lower.startswith("!weather"):
         city = content[8:].strip()
 
@@ -78,8 +79,8 @@ async def on_message(message):
         await send_weather(message, city)
         return
 
-    # TIME
-    elif lower.startswith("!time"):
+    # TIME COMMAND
+    if lower.startswith("!time"):
         city = content[5:].strip()
 
         if not city:
@@ -92,26 +93,14 @@ async def on_message(message):
         await send_time(message, city)
         return
 
-    # TEMPERATURE AUTO REACT
-    elif temp_pattern.search(content):
-        await message.add_reaction("🌡️")
+    # TEMPERATURE DETECTION
+    matches = temp_pattern.findall(content)
+    if matches:
+        await send_temperature_conversion(message, matches)
 
-# ================= REACTION HANDLER ================= #
+# ================= TEMPERATURE ================= #
 
-@client.event
-async def on_reaction_add(reaction, user):
-    if user.bot or str(reaction.emoji) != "🌡️":
-        return
-
-    message = reaction.message
-
-    if message.id in converted_messages:
-        return
-
-    matches = temp_pattern.findall(message.content)
-    if not matches:
-        return
-
+async def send_temperature_conversion(message, matches):
     embed = discord.Embed(
         title="🌡️ Temperature Conversion",
         color=discord.Color.orange()
@@ -137,15 +126,13 @@ async def on_reaction_add(reaction, user):
             result = f"{round(c,2)}°C | {round(f,2)}°F"
 
         embed.add_field(
-            name=f"{value}{unit}",
+            name=f"{value_str}{unit}",
             value=result,
             inline=False
         )
 
-    embed.set_footer(text=f"Requested by {user.display_name}")
-
+    embed.set_footer(text=f"Requested by {message.author.display_name}")
     await message.channel.send(embed=embed)
-    converted_messages.add(message.id)
 
 # ================= WEATHER ================= #
 
