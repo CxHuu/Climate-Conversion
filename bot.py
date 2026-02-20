@@ -6,7 +6,7 @@ from flask import Flask
 from threading import Thread
 from datetime import datetime, timedelta
 
-# ---------------- KEEP ALIVE ---------------- #
+# ---------------- KEEP ALIVE (Render) ---------------- #
 
 app = Flask("")
 
@@ -45,27 +45,29 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    content = message.content.lower()
+    content_lower = message.content.lower()
 
-    # 🌡️ Auto react for temperature
+    # 🌡 Auto react for temperature mentions
     if temp_pattern.search(message.content):
         await message.add_reaction("🌡️")
 
-    # 🌦 Weather command
-    if content.startswith("!weather"):
+    # 🌦 WEATHER COMMAND
+    if content_lower.startswith("!weather"):
         city = message.content[8:].strip()
         if not city:
             await message.channel.send("Example: `!weather London`")
             return
         await send_weather(message, city)
+        return
 
-    # 🕒 Time command
-    if content.startswith("!time"):
+    # 🕒 TIME COMMAND
+    if content_lower.startswith("!time"):
         city = message.content[5:].strip()
         if not city:
             await message.channel.send("Example: `!time Tokyo`")
             return
         await send_time(message, city)
+        return
 
 # ---------------- REACTION HANDLER ---------------- #
 
@@ -123,23 +125,20 @@ async def send_weather(message, city):
         await message.channel.send("Weather API key not configured.")
         return
 
-    url = (
-        f"https://api.openweathermap.org/data/2.5/weather"
-        f"?q={city}&appid={api_key}&units=metric"
-    )
+    url = "https://api.openweathermap.org/data/2.5/weather"
 
-    response = requests.get(url)
+    params = {
+        "q": city,
+        "appid": api_key.strip(),
+        "units": "metric"
+    }
+
+    response = requests.get(url, params=params)
+    data = response.json()
 
     if response.status_code != 200:
-        try:
-            error_data = response.json()
-            error_msg = error_data.get("message", "Unknown error")
-        except:
-            error_msg = "Unknown error"
-        await message.channel.send(f"API Error: {error_msg}")
+        await message.channel.send(f"API Error: {data.get('message', 'Unknown error')}")
         return
-
-    data = response.json()
 
     temp = data["main"]["temp"]
     feels = data["main"]["feels_like"]
@@ -184,23 +183,19 @@ async def send_time(message, city):
         await message.channel.send("Weather API key not configured.")
         return
 
-    url = (
-        f"https://api.openweathermap.org/data/2.5/weather"
-        f"?q={city}&appid={api_key}"
-    )
+    url = "https://api.openweathermap.org/data/2.5/weather"
 
-    response = requests.get(url)
+    params = {
+        "q": city,
+        "appid": api_key.strip()
+    }
+
+    response = requests.get(url, params=params)
+    data = response.json()
 
     if response.status_code != 200:
-        try:
-            error_data = response.json()
-            error_msg = error_data.get("message", "Unknown error")
-        except:
-            error_msg = "Unknown error"
-        await message.channel.send(f"API Error: {error_msg}")
+        await message.channel.send(f"API Error: {data.get('message', 'Unknown error')}")
         return
-
-    data = response.json()
 
     timezone_offset = data["timezone"]
     utc_now = datetime.utcnow()
