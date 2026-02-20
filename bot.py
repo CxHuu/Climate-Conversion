@@ -32,10 +32,20 @@ if not TOKEN:
 
 intents = discord.Intents.default()
 intents.message_content = True
-
 client = discord.Client(intents=intents)
 
-temp_pattern = re.compile(r"\b(-?\d+(?:\.\d+)?)\s?(C|F|K)\b", re.IGNORECASE)
+# Improved regex:
+# Supports:
+# -21c
+# -21 C
+# -21°C
+# 30F
+# 273K
+temp_pattern = re.compile(
+    r"(?<!\w)(-?\d+(?:\.\d+)?)\s?°?\s?(C|F|K)(?!\w)",
+    re.IGNORECASE
+)
+
 converted_messages = set()
 
 # ================= READY ================= #
@@ -66,7 +76,7 @@ async def on_message(message):
             return
 
         await send_weather(message, city)
-        return  # IMPORTANT: stops further execution
+        return
 
     # TIME
     elif lower.startswith("!time"):
@@ -80,13 +90,13 @@ async def on_message(message):
             return
 
         await send_time(message, city)
-        return  # IMPORTANT
+        return
 
     # TEMPERATURE AUTO REACT
     elif temp_pattern.search(content):
         await message.add_reaction("🌡️")
 
-# ================= REACTION ================= #
+# ================= REACTION HANDLER ================= #
 
 @client.event
 async def on_reaction_add(reaction, user):
@@ -121,12 +131,16 @@ async def on_reaction_add(reaction, user):
             k = c + 273.15
             result = f"{round(c,2)}°C | {round(k,2)}K"
 
-        else:
+        else:  # K
             c = value - 273.15
             f = (c * 9/5) + 32
             result = f"{round(c,2)}°C | {round(f,2)}°F"
 
-        embed.add_field(name=f"{value}{unit}", value=result, inline=False)
+        embed.add_field(
+            name=f"{value}{unit}",
+            value=result,
+            inline=False
+        )
 
     embed.set_footer(text=f"Requested by {user.display_name}")
 
