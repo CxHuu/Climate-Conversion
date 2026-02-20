@@ -6,7 +6,7 @@ from flask import Flask
 from threading import Thread
 from datetime import datetime, timedelta
 
-# ---------------- KEEP ALIVE (Render) ---------------- #
+# ================= KEEP ALIVE (Render) ================= #
 
 app = Flask("")
 
@@ -21,7 +21,17 @@ def keep_alive():
     thread = Thread(target=run)
     thread.start()
 
-# ---------------- DISCORD SETUP ---------------- #
+# ================= LOAD ENV VARIABLES ================= #
+
+TOKEN = os.getenv("TOKEN")
+WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
+
+if not TOKEN:
+    raise RuntimeError("TOKEN environment variable not set.")
+
+# We don't crash if WEATHER_API_KEY missing — just disable weather/time commands.
+
+# ================= DISCORD SETUP ================= #
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -32,44 +42,53 @@ client = discord.Client(intents=intents)
 temp_pattern = re.compile(r"\b(-?\d+(?:\.\d+)?)\s?(C|F|K)\b", re.IGNORECASE)
 converted_messages = set()
 
-# ---------------- READY ---------------- #
+# ================= READY ================= #
 
 @client.event
 async def on_ready():
     print(f"Logged in as {client.user}")
 
-# ---------------- MESSAGE HANDLER ---------------- #
+# ================= MESSAGE HANDLER ================= #
 
 @client.event
 async def on_message(message):
     if message.author.bot:
         return
 
-    content_lower = message.content.lower()
+    content = message.content
+    content_lower = content.lower()
 
     # 🌡 Auto react for temperature mentions
-    if temp_pattern.search(message.content):
+    if temp_pattern.search(content):
         await message.add_reaction("🌡️")
 
     # 🌦 WEATHER COMMAND
     if content_lower.startswith("!weather"):
-        city = message.content[8:].strip()
+        city = content[8:].strip()
         if not city:
             await message.channel.send("Example: `!weather London`")
             return
+
+        if not WEATHER_API_KEY:
+            return  # silently ignore if key missing
+
         await send_weather(message, city)
         return
 
     # 🕒 TIME COMMAND
     if content_lower.startswith("!time"):
-        city = message.content[5:].strip()
+        city = content[5:].strip()
         if not city:
             await message.channel.send("Example: `!time Tokyo`")
             return
+
+        if not WEATHER_API_KEY:
+            return  # silently ignore if key missing
+
         await send_time(message, city)
         return
 
-# ---------------- REACTION HANDLER ---------------- #
+# ================= REACTION HANDLER ================= #
 
 @client.event
 async def on_reaction_add(reaction, user):
@@ -116,20 +135,14 @@ async def on_reaction_add(reaction, user):
     await message.channel.send(embed=embed)
     converted_messages.add(message.id)
 
-# ---------------- WEATHER FUNCTION ---------------- #
+# ================= WEATHER FUNCTION ================= #
 
 async def send_weather(message, city):
-    api_key = os.getenv("WEATHER_API_KEY")
-
-    if not api_key:
-        await message.channel.send("Weather API key not configured.")
-        return
-
     url = "https://api.openweathermap.org/data/2.5/weather"
 
     params = {
         "q": city,
-        "appid": api_key.strip(),
+        "appid": WEATHER_API_KEY.strip(),
         "units": "metric"
     }
 
@@ -174,20 +187,14 @@ async def send_weather(message, city):
 
     await message.channel.send(embed=embed)
 
-# ---------------- TIME FUNCTION ---------------- #
+# ================= TIME FUNCTION ================= #
 
 async def send_time(message, city):
-    api_key = os.getenv("WEATHER_API_KEY")
-
-    if not api_key:
-        await message.channel.send("Weather API key not configured.")
-        return
-
     url = "https://api.openweathermap.org/data/2.5/weather"
 
     params = {
         "q": city,
-        "appid": api_key.strip()
+        "appid": WEATHER_API_KEY.strip()
     }
 
     response = requests.get(url, params=params)
@@ -212,7 +219,7 @@ async def send_time(message, city):
 
     await message.channel.send(embed=embed)
 
-# ---------------- RUN ---------------- #
+# ================= RUN ================= #
 
 keep_alive()
-client.run(os.getenv("TOKEN"))
+client.run(TOKEN)
