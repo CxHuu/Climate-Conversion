@@ -6,9 +6,9 @@ from flask import Flask
 from threading import Thread
 from datetime import datetime, timedelta
 
-# ================= KEEP ALIVE (Render) ================= #
+# ================= KEEP ALIVE ================= #
 
-app = Flask("")
+app = Flask(__name__)
 
 @app.route("/")
 def home():
@@ -18,24 +18,20 @@ def run():
     app.run(host="0.0.0.0", port=8080)
 
 def keep_alive():
-    thread = Thread(target=run)
-    thread.start()
+    Thread(target=run).start()
 
-# ================= LOAD ENV VARIABLES ================= #
+# ================= ENV ================= #
 
 TOKEN = os.getenv("TOKEN")
 WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
 
 if not TOKEN:
-    raise RuntimeError("TOKEN environment variable not set.")
+    raise RuntimeError("TOKEN not set.")
 
-# We don't crash if WEATHER_API_KEY missing — just disable weather/time commands.
-
-# ================= DISCORD SETUP ================= #
+# ================= DISCORD ================= #
 
 intents = discord.Intents.default()
 intents.message_content = True
-intents.reactions = True
 
 client = discord.Client(intents=intents)
 
@@ -55,40 +51,42 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    content = message.content
-    content_lower = content.lower()
+    content = message.content.strip()
+    lower = content.lower()
 
-    # 🌡 Auto react for temperature mentions
-    if temp_pattern.search(content):
-        await message.add_reaction("🌡️")
-
-    # 🌦 WEATHER COMMAND
-    if content_lower.startswith("!weather"):
+    # WEATHER
+    if lower.startswith("!weather"):
         city = content[8:].strip()
+
         if not city:
             await message.channel.send("Example: `!weather London`")
             return
 
         if not WEATHER_API_KEY:
-            return  # silently ignore if key missing
+            return
 
         await send_weather(message, city)
-        return
+        return  # IMPORTANT: stops further execution
 
-    # 🕒 TIME COMMAND
-    if content_lower.startswith("!time"):
+    # TIME
+    elif lower.startswith("!time"):
         city = content[5:].strip()
+
         if not city:
             await message.channel.send("Example: `!time Tokyo`")
             return
 
         if not WEATHER_API_KEY:
-            return  # silently ignore if key missing
+            return
 
         await send_time(message, city)
-        return
+        return  # IMPORTANT
 
-# ================= REACTION HANDLER ================= #
+    # TEMPERATURE AUTO REACT
+    elif temp_pattern.search(content):
+        await message.add_reaction("🌡️")
+
+# ================= REACTION ================= #
 
 @client.event
 async def on_reaction_add(reaction, user):
@@ -123,7 +121,7 @@ async def on_reaction_add(reaction, user):
             k = c + 273.15
             result = f"{round(c,2)}°C | {round(k,2)}K"
 
-        else:  # K
+        else:
             c = value - 273.15
             f = (c * 9/5) + 32
             result = f"{round(c,2)}°C | {round(f,2)}°F"
@@ -135,7 +133,7 @@ async def on_reaction_add(reaction, user):
     await message.channel.send(embed=embed)
     converted_messages.add(message.id)
 
-# ================= WEATHER FUNCTION ================= #
+# ================= WEATHER ================= #
 
 async def send_weather(message, city):
     url = "https://api.openweathermap.org/data/2.5/weather"
@@ -187,7 +185,7 @@ async def send_weather(message, city):
 
     await message.channel.send(embed=embed)
 
-# ================= TIME FUNCTION ================= #
+# ================= TIME ================= #
 
 async def send_time(message, city):
     url = "https://api.openweathermap.org/data/2.5/weather"
